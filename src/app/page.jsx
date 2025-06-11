@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/components/theme-provider";
 import { generateCreditCard, generateMultipleCards, exportCardData } from "@/lib/cardGenerator";
+import { toast } from "sonner";
 import {
     CreditCard,
     Copy,
@@ -28,7 +29,6 @@ export default function CreditCardGenerator() {
     const [generatedCards, setGeneratedCards] = useState([]);
     const [isGenerating, setIsGenerating] = useState(false);
     const [exportFormat, setExportFormat] = useState("pipe");
-    const [copySuccess, setCopySuccess] = useState("");
     const [patternError, setPatternError] = useState("");
     const { theme, setTheme } = useTheme();
 
@@ -57,53 +57,108 @@ export default function CreditCardGenerator() {
 
     const handleGenerate = () => {
         if (!validatePattern(binPattern)) {
+            toast.error("Invalid Pattern", {
+                description: "Please check your BIN pattern and try again.",
+            });
             return;
         }
 
         setIsGenerating(true);
-        setCopySuccess("");
+
+        // Show generating toast
+        const loadingToast = toast.loading(`Generating ${cardCount} card${cardCount !== 1 ? "s" : ""}...`, {
+            description: "Please wait while we generate your cards.",
+        });
 
         try {
             // Use batch generation for better performance
             const cards = generateMultipleCards(binPattern, cardCount);
             setGeneratedCards(cards);
+
+            // Dismiss loading toast and show success
+            toast.dismiss(loadingToast);
+            toast.success("Cards Generated!", {
+                description: `Successfully generated ${cards.length} card${cards.length !== 1 ? "s" : ""}.`,
+                action: {
+                    label: "Copy All",
+                    onClick: () => {
+                        const allCards = cards.map((card) => card.formatted).join("\n");
+                        copyToClipboard(allCards, "All cards", false);
+                    },
+                },
+            });
         } catch (error) {
             console.error("Error generating cards:", error);
-            alert("Error generating cards. Please check your pattern and try again.");
+            toast.dismiss(loadingToast);
+            toast.error("Generation Failed", {
+                description: "Error generating cards. Please check your pattern and try again.",
+            });
         } finally {
             setIsGenerating(false);
         }
     };
 
-    const copyToClipboard = async (text, type = "card") => {
+    const copyToClipboard = async (text, type = "card", showToast = true) => {
         try {
             await navigator.clipboard.writeText(text);
-            setCopySuccess(`${type} copied!`);
-            setTimeout(() => setCopySuccess(""), 2000);
+            if (showToast) {
+                toast.success("Copied to Clipboard!", {
+                    description: `${type} copied successfully.`,
+                    duration: 2000,
+                });
+            }
         } catch (error) {
             console.error("Failed to copy:", error);
-            alert("Failed to copy to clipboard");
+            if (showToast) {
+                toast.error("Copy Failed", {
+                    description: "Failed to copy to clipboard. Please try again.",
+                });
+            }
         }
     };
 
     const downloadCards = () => {
-        if (generatedCards.length === 0) return;
+        if (generatedCards.length === 0) {
+            toast.warning("No Cards to Export", {
+                description: "Please generate some cards first.",
+            });
+            return;
+        }
 
-        const data = generatedCards.map((card) => exportCardData(card, exportFormat)).join("\n");
-        const blob = new Blob([data], { type: "text/plain" });
-        const url = URL.createObjectURL(blob);
+        try {
+            const data = generatedCards.map((card) => exportCardData(card, exportFormat)).join("\n");
+            const blob = new Blob([data], { type: "text/plain" });
+            const url = URL.createObjectURL(blob);
 
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `credit_cards_${Date.now()}.${exportFormat === "json" ? "json" : "txt"}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `credit_cards_${Date.now()}.${exportFormat === "json" ? "json" : "txt"}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            toast.success("Export Complete!", {
+                description: `Downloaded ${
+                    generatedCards.length
+                } cards in ${exportFormat.toUpperCase()} format.`,
+                duration: 3000,
+            });
+        } catch (error) {
+            console.error("Export failed:", error);
+            toast.error("Export Failed", {
+                description: "Failed to download cards. Please try again.",
+            });
+        }
     };
 
     const toggleTheme = () => {
-        setTheme(theme === "dark" ? "light" : "dark");
+        const newTheme = theme === "dark" ? "light" : "dark";
+        setTheme(newTheme);
+        toast.success("Theme Changed", {
+            description: `Switched to ${newTheme} mode.`,
+            duration: 1500,
+        });
     };
 
     return (
@@ -228,7 +283,16 @@ export default function CreditCardGenerator() {
                             {/* Export Format Selection */}
                             <div className="space-y-2">
                                 <Label htmlFor="export-format">Export Format</Label>
-                                <Select value={exportFormat} onValueChange={setExportFormat}>
+                                <Select
+                                    value={exportFormat}
+                                    onValueChange={(value) => {
+                                        setExportFormat(value);
+                                        toast.info("Export Format Changed", {
+                                            description: `Selected ${value.toUpperCase()} format.`,
+                                            duration: 1500,
+                                        });
+                                    }}
+                                >
                                     <SelectTrigger>
                                         <SelectValue placeholder="Select export format" />
                                     </SelectTrigger>
@@ -260,14 +324,6 @@ export default function CreditCardGenerator() {
                                     </>
                                 )}
                             </Button>
-
-                            {/* Copy Success Message */}
-                            {copySuccess && (
-                                <div className="flex items-center gap-2 text-green-600 text-sm">
-                                    <CheckCircle className="h-4 w-4" />
-                                    {copySuccess}
-                                </div>
-                            )}
 
                             {/* Usage Info */}
                             <div className="bg-muted/50 p-4 rounded-lg">
