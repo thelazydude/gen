@@ -25,7 +25,7 @@ import {
 
 export default function CreditCardGenerator() {
     const [binPattern, setBinPattern] = useState("");
-    const [cardCount, setCardCount] = useState(1);
+    const [cardCount, setCardCount] = useState(10);
     const [generatedCards, setGeneratedCards] = useState([]);
     const [isGenerating, setIsGenerating] = useState(false);
     const [exportFormat, setExportFormat] = useState("pipe");
